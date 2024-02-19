@@ -1,12 +1,11 @@
 use std::{
-    ffi::{c_void, CStr, CString},
-    ptr::{null, null_mut},
+    ffi::{CStr, CString},
+    ptr::null_mut,
 };
 
-use ffmpeg4_ffi::{
-    extra::defs::{averror, averror_eof, eagain},
-    sys::{self, AVHWFramesContext, AVMediaType_AVMEDIA_TYPE_VIDEO},
-};
+use ffmpeg4_ffi::{sys::{self, AVMediaType_AVMEDIA_TYPE_VIDEO}, extra::defs::{averror, eagain, averror_eof}};
+
+extern crate term_size;
 
 trait ToU32Result {
     fn to_u32_result(self, err_str: &str) -> Result<u32, String>;
@@ -35,15 +34,9 @@ impl ToU32Result for i32 {
 struct VideoDecoder {
     fmt_ctx: *mut sys::AVFormatContext,
     pkt: *mut sys::AVPacket,
-    codec: *mut sys::AVCodec,
     codec_ctx: *mut sys::AVCodecContext,
     frame: *mut sys::AVFrame,
     video_stream_idx: u32,
-}
-
-enum VideoResult {
-    Finished,
-    Decoded,
 }
 
 fn to_cstring(str: &str) -> CString {
@@ -58,7 +51,6 @@ impl VideoDecoder {
                 .as_mut()
                 .ok_or("Could not aquire format context")?;
 
-            let mut options: *mut sys::AVDictionary = null_mut();
             fmt_ctx.iformat = sys::av_find_input_format(to_cstring("v4l2").as_ptr());
             sys::avformat_open_input(
                 &mut (fmt_ctx as *mut sys::AVFormatContext),
@@ -81,18 +73,14 @@ impl VideoDecoder {
                 0,
             )
             .to_u32_result("could not find video stream")?;
-            println!("{best_stream_idx} {}", best_stream_idx as isize);
             let codec_params = (**(fmt_ctx.streams.wrapping_add(best_stream_idx as usize))).codecpar;
         
-            println!("dasda");
             let codec = sys::avcodec_find_decoder((*codec_params).codec_id)
                 .as_mut()
                 .ok_or("Could not aquire a codec")?;
-            println!("aaa");
             let codec_ctx = sys::avcodec_alloc_context3(codec)
                 .as_mut()
                 .ok_or("Could not aquire a codec context")?;
-            codec_ctx.pix_fmt = sys::AVPixelFormat_AV_PIX_FMT_RGB24;
 
             sys::avcodec_parameters_to_context(codec_ctx, codec_params);
             sys::avcodec_open2(codec_ctx, codec, null_mut())
@@ -100,7 +88,6 @@ impl VideoDecoder {
             Ok(VideoDecoder {
                 fmt_ctx,
                 pkt,
-                codec,
                 codec_ctx,
                 frame,
                 video_stream_idx: best_stream_idx,
@@ -108,7 +95,7 @@ impl VideoDecoder {
         }
     }
 
-    fn decode_frames<F>(&mut self, output_file: &str, on_frame_decoded: F) -> Result<(), String>
+    fn decode_frames<F>(&mut self, on_frame_decoded: F) -> Result<(), String>
     where
         F: Fn(*mut sys::AVFrame),
     {
@@ -118,8 +105,12 @@ impl VideoDecoder {
                     sys::avcodec_send_packet(self.codec_ctx, self.pkt)
                         .to_u32_result("Could not send packet to the AVCodec of the decoder")?;
                     loop {
-                        let ret = sys::avcodec_receive_frame(self.codec_ctx, self.frame)
-                            .to_u32_result("error while receiving a frame from the decoder")?;
+                        let ret = sys::avcodec_receive_frame(self.codec_ctx, self.frame);
+
+                        if ret == averror(eagain()) || ret == averror(averror_eof()) {
+                            break;
+                        }
+                        ret.to_u32_result("an error happened while receiving the frame")?; 
                         on_frame_decoded(self.frame);
                     }
 
@@ -137,11 +128,35 @@ impl Drop for VideoDecoder {
         }
     }
 }
+
 fn main() -> Result<(), String> {
     let mut decoder = VideoDecoder::new("/dev/video0")?;
-    println!("o");
-    decoder.decode_frames("", |frame| unsafe {
-        println!("frame format {}", (*frame).format);
+    decoder.decode_frames(|frame| unsafe {
+        let frame = *frame;
+        let mut str = String::new();
+        let (w, h)  = term_size::dimensions().expect("Could not acquire terminal dimensions");
+        let (w, h) = (w as i32, h as i32);
+        let x_ratio = frame.width / w;
+        let y_ratio = frame.height / h;
+        for y in 0..h {
+                for x in 0..w {
+                    let luminance = frame.data[0].offset((y * y_ratio * frame.linesize[0] + 2 * x * x_ratio) as isize);
+                    str.push(match *luminance {
+                        0..=25 => ' ',
+                        26..=50 => '.',
+                        51..=75 => ':',
+                        76..=100 => '-',
+                        101..=125 => '=',
+                        126..=150 => '+',
+                        151..=175 => '*',
+                        176..=200 => '#',
+                        201..=225 => '%',
+                        226..=255 => '@',
+                    });
+                }
+                str.push('\n');
+        }
+        print!("{}", str);
     })?;
 
     Ok(())
