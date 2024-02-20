@@ -1,6 +1,8 @@
 use std::{
     ffi::{CStr, CString},
+    ops::Index,
     ptr::null_mut,
+    slice::from_raw_parts,
 };
 
 use ffmpeg4_ffi::{
@@ -9,6 +11,30 @@ use ffmpeg4_ffi::{
 };
 
 extern crate term_size;
+
+pub struct PixelData<'a>(&'a AVFrame);
+
+pub trait Pixelable {
+    fn pixels(&self) -> PixelData;
+}
+
+impl Pixelable for AVFrame {
+    fn pixels(&self) -> PixelData {
+        PixelData(self)
+    }
+}
+
+impl<'a> Index<usize> for PixelData<'a> {
+    type Output = [u8];
+    fn index(&self, y: usize) -> &Self::Output {
+        unsafe {
+            from_raw_parts(
+                self.0.data[0].wrapping_add(self.0.linesize[0] as usize * y),
+                self.0.linesize[0] as usize,
+            )
+        }
+    }
+}
 
 trait ToU32Result {
     fn to_u32_result(self, err_str: &str) -> Result<u32, String>;
@@ -133,11 +159,17 @@ impl Drop for VideoDecoder {
 #[inline]
 fn yuv_to_rgb(frame: AVFrame, x_idx: i32, y_idx: i32, x_ratio: i32, y_ratio: i32) -> (u8, u8, u8) {
     unsafe {
-        let (u_offset, v_offset): (i32, i32) = if (x_idx*x_ratio) & 1 == 0 { (1, 3) } else { (-1, 1) };
-        let base_idx = (y_idx * y_ratio * frame.linesize[0] + 2 * x_idx * x_ratio) as isize;
-        let y = *frame.data[0].offset(base_idx);
-        let u = *frame.data[0].offset(base_idx + u_offset as isize);
-        let v = *frame.data[0].offset(base_idx + v_offset as isize);
+        let (u_offset, v_offset): (i32, i32) = if (x_idx * x_ratio) & 1 == 0 {
+            (1, 3)
+        } else {
+            (-1, 1)
+        };
+        let (y_idx, x_idx) = ((y_idx * y_ratio), (2 * x_idx * x_ratio));
+        let pixels = frame.pixels();
+
+        let y = pixels[y_idx as usize][x_idx as usize];
+        let u = pixels[y_idx as usize][(x_idx + u_offset) as usize];
+        let v = pixels[y_idx as usize][(x_idx + v_offset) as usize];
 
         let y_float = y as f32;
         let u_float = u as f32 - 128.0;
@@ -175,7 +207,9 @@ fn rgb_color_string(text: &str, r: u8, g: u8, b: u8) -> String {
 }
 
 fn greyscale(frame: AVFrame, out: &mut String, x: i32, y: i32, x_ratio: i32, y_ratio: i32) {
-    out.push(get_greyscale_representation(get_luminance(frame, x, y, x_ratio, y_ratio)))
+    out.push(get_greyscale_representation(get_luminance(
+        frame, x, y, x_ratio, y_ratio,
+    )))
 }
 
 fn rgb(frame: AVFrame, out: &mut String, x: i32, y: i32, x_ratio: i32, y_ratio: i32) {
@@ -191,7 +225,6 @@ fn main() -> Result<(), String> {
         let (w, h) = term_size::dimensions().expect("Could not acquire terminal dimensions");
         let (term_width, term_height) = (w as i32, h as i32);
         let x_ratio = frame.width / term_width;
-        println!("{} {}", x_ratio, frame.width); 
         let y_ratio = frame.height / term_height;
 
         for y in 0..term_height {
