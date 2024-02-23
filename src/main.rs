@@ -6,7 +6,7 @@ mod video;
 
 use std::env;
 
-use cli::CliFrameWriter;
+use cli::{CliFrameWriter, CliFilter};
 use decoder::VideoDecoder;
 use ffmpeg4_ffi::sys;
 
@@ -31,8 +31,8 @@ path: output path for the video
     }
 
     let mut writer = match (args[1].as_str(), args[2].as_str()) {
-        ("cli", "greyscale") => CliFrameWriter::new(cli::CliFilter::Greyscale),
-        ("cli", "rgb") => CliFrameWriter::new(cli::CliFilter::Rgb),
+        ("cli", "greyscale") => CliFrameWriter::new(CliFilter::Greyscale),
+        ("cli", "rgb") => CliFrameWriter::new(CliFilter::Rgb),
         (_, _) => return Err("invalid arguments".to_string()),
     };
     decoder.decode_frames(&mut writer)?;

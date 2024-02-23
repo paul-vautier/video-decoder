@@ -19,6 +19,12 @@ pub trait FrameWriter {
 }
 
 impl VideoDecoder {
+    
+    /// Creates a new FFMPEG video decoder 
+    ///
+    /// # Arguments
+    /// * `filename` - The file path for the video input
+    ///
     pub fn new(filename: &str) -> Result<Self, String> {
         unsafe {
             sys::avdevice_register_all();
@@ -71,6 +77,18 @@ impl VideoDecoder {
         }
     }
 
+    /// Decode frames until none are left
+    ///
+    /// # Arguments
+    /// * `decoder` - the delegate tasked with writing the frame content
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cli::{CliFrameWriter, CliFilter}
+    /// let mut writer = ...
+    /// writer.decode_frames(&mut CliFrameWriter::new(CliFilter::Rgb));
+    /// ```
     pub fn decode_frames(&mut self, decoder: &mut impl FrameWriter) -> Result<(), String> {
         unsafe {
             while sys::av_read_frame(self.fmt_ctx, self.pkt) >= 0 {
