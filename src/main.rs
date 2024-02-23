@@ -24,9 +24,7 @@ Arguments format :
 
     video_args: <output_file> <video_filters> -- arguments for generating a video output
     video_filters: [] -- available video filters
-    output_file: output path for the video 
-"
-        );
+    output_file: output path for the video");
         return Err("invalid arguments".to_owned());
     }
 

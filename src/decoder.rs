@@ -3,7 +3,7 @@ use std::ptr::null_mut;
 
 use ffmpeg4_ffi::{
     extra::defs::{averror, averror_eof, eagain},
-    sys::{self, AVMediaType_AVMEDIA_TYPE_VIDEO},
+    sys::{self, AVMediaType_AVMEDIA_TYPE_VIDEO, AVFormatContext},
 };
 
 pub struct VideoDecoder {
@@ -17,6 +17,52 @@ pub struct VideoDecoder {
 pub trait FrameWriter {
     fn on_frame_decoded(&mut self, frame: *mut sys::AVFrame);
 }
+
+
+macro_rules! deref {
+    // Match a single identifier
+    ($base:ident) => { 
+        $base 
+    };
+
+    // Match a sequence of field accesses
+    ($a:expr, $($rest:ident),+) => { 
+        deref_impl!($a, $($rest),*)
+    };
+
+    // Match a sequence of dereferences
+    ($a:ident, $($rest:ident),+) => { 
+        deref_impl!($a, $($rest),*)
+    };
+}
+
+macro_rules! deref_impl {
+    // Base case: single identifier
+    ($base:ident) => { 
+        $base 
+    };
+
+    // Base case: single identifier
+    ($a:expr, $b: ident) => { 
+        *(*$a).$b
+    };
+
+    // Base case: single identifier
+    ($a:ident, $b: ident) => { 
+        *(*$a).$b
+    };
+
+    // Recursive case: dereference
+    ($a:expr, $b:ident, $($rest:ident),+) => { 
+        deref_impl!((*$a).$b, $($rest),*)
+    };
+
+    // Recursive case: dereference
+    ($a:ident, $b:ident, $($rest:ident),+) => { 
+        deref_impl!((*$a).$b, $($rest),*)
+    };
+}
+
 
 impl VideoDecoder {
     
@@ -33,7 +79,6 @@ impl VideoDecoder {
                 .as_mut()
                 .ok_or("Could not aquire format context")?;
 
-            fmt_ctx.iformat = sys::av_find_input_format(to_cstring("v4l2").as_ptr());
             sys::avformat_open_input(
                 &mut (fmt_ctx as *mut sys::AVFormatContext),
                 to_cstring(filename).as_ptr(),
@@ -77,6 +122,13 @@ impl VideoDecoder {
         }
     }
 
+    pub fn format_video(&mut self) {
+        unsafe {
+            let fmt = self.fmt_ctx;
+            let streams = deref!(self.fmt_ctx, iformat, name);
+            sys::sws_getContext(fmt_ctx.streams, srcH, srcFormat, dstW, dstH, dstFormat, flags, srcFilter, dstFilter, param)
+        }
+    }
     /// Decode frames until none are left
     ///
     /// # Arguments
@@ -102,7 +154,7 @@ impl VideoDecoder {
                             break;
                         }
                         ret.to_u32_result("an error happened while receiving the frame")?;
-                        decoder.on_frame_decoded(self.frame);
+                        println!("{}", (*self.frame).format);
                     }
                 }
             }
