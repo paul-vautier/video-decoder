@@ -11,7 +11,6 @@ use decoder::VideoDecoder;
 use ffmpeg4_ffi::sys;
 
 fn main() -> Result<(), String> {
-    let mut decoder = VideoDecoder::new("/dev/video0")?;
     let args: Vec<String> = env::args().collect();
 
     if args.len() != 4 {
@@ -31,7 +30,8 @@ Arguments format :
         return Err("invalid arguments".to_owned());
     }
 
-    let mut writer = match (args[1].as_str(), args[2].as_str()) {
+    let mut decoder = VideoDecoder::new(&args[1])?;
+    let mut writer = match (args[2].as_str(), args[3].as_str()) {
         ("cli", "greyscale") => CliFrameWriter::new(CliFilter::Greyscale),
         ("cli", "rgb") => CliFrameWriter::new(CliFilter::Rgb),
         (_, _) => return Err("invalid arguments".to_string()),
