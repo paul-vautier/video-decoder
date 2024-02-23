@@ -14,17 +14,18 @@ fn main() -> Result<(), String> {
     let mut decoder = VideoDecoder::new("/dev/video0")?;
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 3 {
+    if args.len() != 4 {
         eprintln!(
-            "Please provide two arguments : 
-Either
-    cli <cli_filters>
-Or
-    <path> <video_filters>
+            "Invalid arguments, please provide arguments with format <input_file> <cli_args|video_args> 
 
-cli_filters : [rgb, greyscale]
-video_filters : [edges]
-path: output path for the video
+Arguments format : 
+
+    cli_args: cli <cli_filters> -- arguments for writing the video output to the terminal 
+    cli_filters : [rgb, greyscale]
+
+    video_args: <output_file> <video_filters> -- arguments for generating a video output
+    video_filters: [] -- available video filters
+    output_file: output path for the video 
 "
         );
         return Err("invalid arguments".to_owned());
