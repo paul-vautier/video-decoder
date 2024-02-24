@@ -1,6 +1,33 @@
 use crate::sys;
 use std::ffi::{CStr, CString};
 
+#[macro_export]
+macro_rules! deref{
+    // Base case: single identifier
+    ($base:ident) => { 
+        $base 
+    };
+
+    // Base case: single identifier
+    ($a:expr, $b: ident) => { 
+        *(*$a).$b
+    };
+
+    // Base case: single identifier
+    ($a:ident, $b: ident) => { 
+        *(*$a).$b
+    };
+
+    // Recursive case: dereference
+    ($a:expr, $b:ident, $($rest:ident),+) => { 
+        deref!((*$a).$b, $($rest),*)
+    };
+
+    // Recursive case: dereference
+    ($a:ident, $b:ident, $($rest:ident),+) => { 
+        deref!((*$a).$b, $($rest),*)
+    };
+}
 pub trait ToU32Result {
     fn to_u32_result(self, err_str: &str) -> Result<u32, String>;
 }

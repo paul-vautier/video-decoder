@@ -1,9 +1,9 @@
-use crate::utils::{to_cstring, ToU32Result};
+use crate::{deref, utils::{to_cstring, ToU32Result}};
 use std::ptr::null_mut;
 
 use ffmpeg4_ffi::{
     extra::defs::{averror, averror_eof, eagain},
-    sys::{self, AVMediaType_AVMEDIA_TYPE_VIDEO, AVFormatContext},
+    sys::{self, AVMediaType_AVMEDIA_TYPE_VIDEO},
 };
 
 pub struct VideoDecoder {
@@ -18,55 +18,8 @@ pub trait FrameWriter {
     fn on_frame_decoded(&mut self, frame: *mut sys::AVFrame);
 }
 
-
-macro_rules! deref {
-    // Match a single identifier
-    ($base:ident) => { 
-        $base 
-    };
-
-    // Match a sequence of field accesses
-    ($a:expr, $($rest:ident),+) => { 
-        deref_impl!($a, $($rest),*)
-    };
-
-    // Match a sequence of dereferences
-    ($a:ident, $($rest:ident),+) => { 
-        deref_impl!($a, $($rest),*)
-    };
-}
-
-macro_rules! deref_impl {
-    // Base case: single identifier
-    ($base:ident) => { 
-        $base 
-    };
-
-    // Base case: single identifier
-    ($a:expr, $b: ident) => { 
-        *(*$a).$b
-    };
-
-    // Base case: single identifier
-    ($a:ident, $b: ident) => { 
-        *(*$a).$b
-    };
-
-    // Recursive case: dereference
-    ($a:expr, $b:ident, $($rest:ident),+) => { 
-        deref_impl!((*$a).$b, $($rest),*)
-    };
-
-    // Recursive case: dereference
-    ($a:ident, $b:ident, $($rest:ident),+) => { 
-        deref_impl!((*$a).$b, $($rest),*)
-    };
-}
-
-
 impl VideoDecoder {
-    
-    /// Creates a new FFMPEG video decoder 
+    /// Creates a new FFMPEG video decoder
     ///
     /// # Arguments
     /// * `filename` - The file path for the video input
@@ -125,10 +78,11 @@ impl VideoDecoder {
     pub fn format_video(&mut self) {
         unsafe {
             let fmt = self.fmt_ctx;
-            let streams = deref!(self.fmt_ctx, iformat, name);
-            sys::sws_getContext(fmt_ctx.streams, srcH, srcFormat, dstW, dstH, dstFormat, flags, srcFilter, dstFilter, param)
+
+            let streams = deref!(self.fmt_ctx, iformat);
         }
     }
+
     /// Decode frames until none are left
     ///
     /// # Arguments
