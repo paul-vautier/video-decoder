@@ -1,4 +1,4 @@
-use std::ptr::{null, null_mut};
+use std::ptr::{null_mut};
 
 use ffmpeg4_ffi::sys;
 use crate::utils::to_cstring;
@@ -17,8 +17,12 @@ impl VideoFrameWriter {
             let mut fmt_ctx : *mut sys::AVFormatContext = null_mut();
             let format = sys::av_guess_format(to_cstring("v4l2").as_ptr(), null_mut(), null_mut());
 
-        
-            VideoFrameWriter {  }
+            VideoFrameWriter {
+                fmt_ctx,
+                codec_ctx: null_mut(),
+                stream: null_mut(), 
+                pkt: null_mut(),  
+            }
         }
     }
 }

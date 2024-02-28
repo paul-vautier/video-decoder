@@ -29,6 +29,7 @@ Arguments format :
     }
 
     let mut decoder = VideoDecoder::new(&args[1])?;
+    unsafe{sys::av_log_set_level(sys::AV_LOG_ERROR as i32)}
     let mut writer = match (args[2].as_str(), args[3].as_str()) {
         ("cli", "greyscale") => CliFrameWriter::new(CliFilter::Greyscale),
         ("cli", "rgb") => CliFrameWriter::new(CliFilter::Rgb),

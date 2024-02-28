@@ -1,9 +1,10 @@
-use crate::{deref, utils::{to_cstring, ToU32Result}};
+use crate::utils::{to_cstring, ToU32Result};
+
 use std::ptr::null_mut;
 
 use ffmpeg4_ffi::{
     extra::defs::{averror, averror_eof, eagain},
-    sys::{self, AVMediaType_AVMEDIA_TYPE_VIDEO},
+    sys::{self, AVMediaType_AVMEDIA_TYPE_VIDEO, AVPixelFormat_AV_PIX_FMT_YUYV422, printf},
 };
 
 pub struct VideoDecoder {
@@ -65,6 +66,7 @@ impl VideoDecoder {
             sys::avcodec_parameters_to_context(codec_ctx, codec_params);
             sys::avcodec_open2(codec_ctx, codec, null_mut())
                 .to_u32_result("Could not open codec")?;
+
             Ok(VideoDecoder {
                 fmt_ctx,
                 pkt,
@@ -77,9 +79,64 @@ impl VideoDecoder {
 
     pub fn format_video(&mut self) {
         unsafe {
-            let fmt = self.fmt_ctx;
+            let frame = *self.frame;
 
-            let streams = deref!(self.fmt_ctx, iformat);
+            if frame.format == AVPixelFormat_AV_PIX_FMT_YUYV422 {
+                return;
+            }
+
+            println!("{}", frame.format);
+            let sws_context = sys::sws_getContext(
+                frame.width,
+                frame.height,
+                frame.format,
+                frame.width,
+                frame.height,
+                sys::AVPixelFormat_AV_PIX_FMT_YUYV422,
+                sys::SWS_BICUBIC as i32,
+                null_mut(),
+                null_mut(),
+                null_mut(),
+            );
+
+            let to: *mut sys::AVFrame = sys::av_frame_alloc();
+            (*to).width = frame.width;
+            (*to).height = frame.height;
+
+            sys::av_frame_get_buffer(to, 0);
+
+            let size = sys::avpicture_get_size(frame.format, frame.width, frame.height);
+            let buffer = sys::av_malloc(size as usize);
+
+            sys::avpicture_fill(
+                to as *mut sys::AVPicture,
+                buffer as *mut u8,
+                frame.format,
+                frame.width,
+                frame.height,
+            );
+
+            (*to).pts = 0;
+            // Set color space details
+            sys::sws_setColorspaceDetails(sws_context, sys::sws_getCoefficients(sys::SWS_CS_DEFAULT as i32),
+                                     0, // Set source range accordingly
+                                     sys::sws_getCoefficients(sys::SWS_CS_DEFAULT as i32),
+                                     0, // Set destination range accordingly
+                                     0, 1, 1);
+            sys::sws_scale(
+                sws_context,
+                frame.data.as_ptr() as *const *const u8,
+                frame.linesize.as_ptr(),
+                0,
+                frame.height,
+                (*to).data.as_ptr(),
+                (*to).linesize.as_ptr(),
+            );
+
+            (*to).pts = frame.pts;
+            sys::av_frame_free(&mut self.frame);
+            sys::sws_freeContext(sws_context);
+            self.frame = to;
         }
     }
 
@@ -108,7 +165,9 @@ impl VideoDecoder {
                             break;
                         }
                         ret.to_u32_result("an error happened while receiving the frame")?;
-                        println!("{}", (*self.frame).format);
+
+                        self.format_video();
+                        decoder.on_frame_decoded(self.frame)
                     }
                 }
             }

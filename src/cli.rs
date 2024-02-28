@@ -83,9 +83,10 @@ impl FrameWriter for CliFrameWriter {
             let (w, h) = term_size::dimensions().expect("Could not acquire terminal dimensions");
             let (term_width, term_height) = (w as i32, h as i32);
             let x_ratio = frame.width / term_width;
-            println!("{} {}", x_ratio, frame.width);
+            println!("{} {}", frame.width, frame.height);
             let y_ratio = frame.height / term_height;
 
+            println!("{} {}", x_ratio, y_ratio);
             for y in 0..term_height {
                 for x in 0..term_width {
                     match self.filter {
@@ -95,7 +96,7 @@ impl FrameWriter for CliFrameWriter {
                 }
                 str.push('\n');
             }
-            print!("{}", str);
+            println!("{}", str);
         }
     }
 }
