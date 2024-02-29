@@ -120,27 +120,24 @@ impl VideoDecoder {
             let sws_context = *self
                 .sws_ctx
                 .get_or_insert_with(|| create_sws_context(frame));
-            let to = *self
+            let yuv_frame = *self
                 .yuv_frame
                 .get_or_insert_with(|| create_frame(self.input_frame));
 
-            let to_fr = **self
-                .yuv_frame
-                .get_or_insert_with(|| create_frame(self.input_frame));
             sys::sws_scale(
                 sws_context,
                 frame.data.as_ptr() as *const *const u8,
                 frame.linesize.as_ptr(),
                 0,
                 frame.height,
-                (*to).data.as_ptr(),
-                (*to).linesize.as_ptr(),
+                (*yuv_frame).data.as_ptr(),
+                (*yuv_frame).linesize.as_ptr(),
             )
             .to_u32_result("could not change format")
             .unwrap();
 
-            (*to).pts = frame.pts;
-            to 
+            (*yuv_frame).pts = frame.pts;
+            yuv_frame 
         }
     }
 
