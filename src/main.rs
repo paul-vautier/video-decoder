@@ -6,13 +6,16 @@ mod video;
 
 use std::env;
 
-use cli::{CliFrameWriter, CliFilter};
+trait ToU32Result {
+    fn to_u32_result(self, err_str: &str) -> Result<u32, String>;
+}
+
+use cli::{CliFilter, CliFrameWriter};
 use decoder::VideoDecoder;
 use ffmpeg4_ffi::sys;
 
 fn main() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
-
     if args.len() != 4 {
         eprintln!(
             "Invalid arguments, please provide arguments with format <input_file> <cli_args|video_args> 
@@ -29,7 +32,7 @@ Arguments format :
     }
 
     let mut decoder = VideoDecoder::new(&args[1])?;
-    unsafe{sys::av_log_set_level(sys::AV_LOG_ERROR as i32)}
+    unsafe { sys::av_log_set_level(sys::AV_LOG_ERROR as i32) }
     let mut writer = match (args[2].as_str(), args[3].as_str()) {
         ("cli", "greyscale") => CliFrameWriter::new(CliFilter::Greyscale),
         ("cli", "rgb") => CliFrameWriter::new(CliFilter::Rgb),

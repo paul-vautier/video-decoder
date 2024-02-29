@@ -4,14 +4,16 @@ use std::ptr::null_mut;
 
 use ffmpeg4_ffi::{
     extra::defs::{averror, averror_eof, eagain},
-    sys::{self, AVMediaType_AVMEDIA_TYPE_VIDEO, AVPixelFormat_AV_PIX_FMT_YUYV422, printf},
+    sys::{self, AVMediaType_AVMEDIA_TYPE_VIDEO},
 };
 
 pub struct VideoDecoder {
     fmt_ctx: *mut sys::AVFormatContext,
     pkt: *mut sys::AVPacket,
     codec_ctx: *mut sys::AVCodecContext,
-    frame: *mut sys::AVFrame,
+    input_frame: *mut sys::AVFrame,
+    yuv_frame: Option<*mut sys::AVFrame>,
+    sws_ctx: Option<*mut sys::SwsContext>,
     video_stream_idx: u32,
 }
 
@@ -28,6 +30,9 @@ impl VideoDecoder {
     pub fn new(filename: &str) -> Result<Self, String> {
         unsafe {
             sys::avdevice_register_all();
+            sys::avcodec_register_all();
+            sys::avfilter_register_all();
+            sys::av_register_all();
             let frame: *mut sys::AVFrame = sys::av_frame_alloc();
             let fmt_ctx = sys::avformat_alloc_context()
                 .as_mut()
@@ -71,7 +76,9 @@ impl VideoDecoder {
                 fmt_ctx,
                 pkt,
                 codec_ctx,
-                frame,
+                input_frame: frame, 
+                yuv_frame: None,
+                sws_ctx: None,
                 video_stream_idx: best_stream_idx,
             })
         }
@@ -79,13 +86,8 @@ impl VideoDecoder {
 
     pub fn format_video(&mut self) {
         unsafe {
-            let frame = *self.frame;
+            let frame = *self.input_frame;
 
-            if frame.format == AVPixelFormat_AV_PIX_FMT_YUYV422 {
-                return;
-            }
-
-            println!("{}", frame.format);
             let sws_context = sys::sws_getContext(
                 frame.width,
                 frame.height,
@@ -93,36 +95,34 @@ impl VideoDecoder {
                 frame.width,
                 frame.height,
                 sys::AVPixelFormat_AV_PIX_FMT_YUYV422,
-                sys::SWS_BICUBIC as i32,
+                sys::SWS_BILINEAR as i32,
                 null_mut(),
                 null_mut(),
                 null_mut(),
             );
+            // RRRRRRRRRRR
+            // GGGGGGGGGGG
+            // BBBBBBBBBBB
 
             let to: *mut sys::AVFrame = sys::av_frame_alloc();
             (*to).width = frame.width;
             (*to).height = frame.height;
+            (*to).format = sys::AVPixelFormat_AV_PIX_FMT_YUYV422;
 
-            sys::av_frame_get_buffer(to, 0);
-
-            let size = sys::avpicture_get_size(frame.format, frame.width, frame.height);
-            let buffer = sys::av_malloc(size as usize);
-
-            sys::avpicture_fill(
-                to as *mut sys::AVPicture,
-                buffer as *mut u8,
-                frame.format,
-                frame.width,
-                frame.height,
-            );
+            sys::av_frame_get_buffer(to, 0)
+                .to_u32_result(" :( ")
+                .unwrap();
 
             (*to).pts = 0;
-            // Set color space details
-            sys::sws_setColorspaceDetails(sws_context, sys::sws_getCoefficients(sys::SWS_CS_DEFAULT as i32),
-                                     0, // Set source range accordingly
-                                     sys::sws_getCoefficients(sys::SWS_CS_DEFAULT as i32),
-                                     0, // Set destination range accordingly
-                                     0, 1, 1);
+
+            if sys::sws_isSupportedInput(sys::sws_isSupportedInput(frame.format)) == 0 {
+                panic!("not supported format")
+            }
+
+            if sys::sws_isSupportedOutput(sys::AVPixelFormat_AV_PIX_FMT_YUYV422) == 0 {
+                panic!("not supported format")
+            }
+
             sys::sws_scale(
                 sws_context,
                 frame.data.as_ptr() as *const *const u8,
@@ -131,12 +131,15 @@ impl VideoDecoder {
                 frame.height,
                 (*to).data.as_ptr(),
                 (*to).linesize.as_ptr(),
-            );
+            )
+            .to_u32_result("could not change format")
+            .unwrap();
 
             (*to).pts = frame.pts;
-            sys::av_frame_free(&mut self.frame);
+
             sys::sws_freeContext(sws_context);
-            self.frame = to;
+            sys::av_frame_free(&mut self.input_frame);
+            self.input_frame = to
         }
     }
 
@@ -159,7 +162,7 @@ impl VideoDecoder {
                     sys::avcodec_send_packet(self.codec_ctx, self.pkt)
                         .to_u32_result("Could not send packet to the AVCodec of the decoder")?;
                     loop {
-                        let ret = sys::avcodec_receive_frame(self.codec_ctx, self.frame);
+                        let ret = sys::avcodec_receive_frame(self.codec_ctx, self.input_frame);
 
                         if ret == averror(eagain()) || ret == averror(averror_eof()) {
                             break;
@@ -167,7 +170,7 @@ impl VideoDecoder {
                         ret.to_u32_result("an error happened while receiving the frame")?;
 
                         self.format_video();
-                        decoder.on_frame_decoded(self.frame)
+                        decoder.on_frame_decoded(self.input_frame);
                     }
                 }
             }
@@ -179,7 +182,7 @@ impl VideoDecoder {
 impl Drop for VideoDecoder {
     fn drop(&mut self) {
         unsafe {
-            sys::av_frame_free(&mut self.frame);
+            sys::av_frame_free(&mut self.input_frame);
         }
     }
 }

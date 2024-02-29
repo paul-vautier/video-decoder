@@ -1,5 +1,5 @@
 use crate::sys;
-use std::ffi::{CStr, CString};
+use std::{ffi::{CStr, CString}, ops::Index, slice::from_raw_parts};
 
 #[macro_export]
 macro_rules! deref{
@@ -54,4 +54,28 @@ impl ToU32Result for i32 {
 
 pub fn to_cstring(str: &str) -> CString {
     CString::new(str).expect("could not create cstring")
+}
+
+pub struct PixelData<'a>(&'a sys::AVFrame);
+
+pub trait Pixelable {
+    fn pixels(&self) -> PixelData;
+}
+
+impl Pixelable for sys::AVFrame {
+    fn pixels(&self) -> PixelData {
+        PixelData(self)
+    }
+}
+
+impl<'a> Index<usize> for PixelData<'a> {
+    type Output = [u8];
+    fn index(&self, y: usize) -> &Self::Output {
+        unsafe {
+            from_raw_parts(
+                self.0.data[0].wrapping_add(self.0.linesize[0] as usize * y),
+                self.0.linesize[0] as usize,
+            )
+        }
+    }
 }

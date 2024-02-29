@@ -1,6 +1,6 @@
 use ffmpeg4_ffi::sys;
 
-use crate::decoder::FrameWriter;
+use crate::{decoder::FrameWriter, utils::Pixelable};
 
 pub enum CliFilter {
     Rgb,
@@ -19,26 +19,26 @@ fn yuv_to_rgb(
     x_ratio: i32,
     y_ratio: i32,
 ) -> (u8, u8, u8) {
-    unsafe {
-        let (u_offset, v_offset): (i32, i32) = if (x_idx * x_ratio) & 1 == 0 {
-            (1, 3)
-        } else {
-            (-1, 1)
-        };
-        let base_idx = (y_idx * y_ratio * frame.linesize[0] + 2 * x_idx * x_ratio) as isize;
-        let y = *frame.data[0].offset(base_idx);
-        let u = *frame.data[0].offset(base_idx + u_offset as isize);
-        let v = *frame.data[0].offset(base_idx + v_offset as isize);
+    let (u_offset, v_offset): (i32, i32) = if (x_idx * x_ratio) & 1 == 0 {
+        (1, 3)
+    } else {
+        (-1, 1)
+    };
+    let (y_idx, x_idx) = ((y_idx * y_ratio), (2 * x_idx * x_ratio));
+    let pixels = frame.pixels();
 
-        let y_float = y as f32;
-        let u_float = u as f32 - 128.0;
-        let v_float = v as f32 - 128.0;
-        let r = (y_float + 1.402 * v_float).clamp(0.0, 255.0) as u8;
-        let g = (y_float - 0.344136 * u_float - 0.714136 * v_float).clamp(0.0, 255.0) as u8;
-        let b = (y_float + 1.772 * u_float).clamp(0.0, 255.0) as u8;
+    let y = pixels[y_idx as usize][x_idx as usize];
+    let u = pixels[y_idx as usize][(x_idx + u_offset) as usize];
+    let v = pixels[y_idx as usize][(x_idx + v_offset) as usize];
 
-        (r, g, b)
-    }
+    let y_float = y as f32;
+    let u_float = u as f32 - 128.0;
+    let v_float = v as f32 - 128.0;
+    let r = (y_float + 1.402 * v_float).clamp(0.0, 255.0) as u8;
+    let g = (y_float - 0.344136 * u_float - 0.714136 * v_float).clamp(0.0, 255.0) as u8;
+    let b = (y_float + 1.772 * u_float).clamp(0.0, 255.0) as u8;
+
+    (r, g, b)
 }
 
 #[inline]
@@ -83,10 +83,7 @@ impl FrameWriter for CliFrameWriter {
             let (w, h) = term_size::dimensions().expect("Could not acquire terminal dimensions");
             let (term_width, term_height) = (w as i32, h as i32);
             let x_ratio = frame.width / term_width;
-            println!("{} {}", frame.width, frame.height);
             let y_ratio = frame.height / term_height;
-
-            println!("{} {}", x_ratio, y_ratio);
             for y in 0..term_height {
                 for x in 0..term_width {
                     match self.filter {
@@ -96,7 +93,7 @@ impl FrameWriter for CliFrameWriter {
                 }
                 str.push('\n');
             }
-            println!("{}", str);
+            print!("{}", str);
         }
     }
 }
